@@ -1,9 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
 import { EncryptionService } from 'src/common/encryption.service';
 import { ClientProxyMsProject } from 'src/common/proxy/client-proxy';
 import { UserMSG } from 'src/common/constants';
 import { firstValueFrom } from 'rxjs';
+import { LoginDto } from './dto/login.dto';
+import { microserviceResponses } from 'src/common/utils';
 
 @Injectable()
 export class AuthService {
@@ -12,6 +14,32 @@ export class AuthService {
     private readonly encryptionService: EncryptionService,
   ) {}
   private _clientProxyUsers = this.clientProxy.clientProxyUsers();
+
+  async login(loginDto: LoginDto) {
+    try {
+      const response = await firstValueFrom(
+        this._clientProxyUsers.send(
+          UserMSG.FIND_ONE_BY_USERNAME,
+          loginDto.username,
+        ),
+      );
+      if (response.isError) {
+        throw new BadRequestException('Invalid credentials');
+      }
+      const user = response.result;
+      const isCorrectPassword = await this.encryptionService.comparePasswords(
+        loginDto.password,
+        user.password,
+      );
+      if (!isCorrectPassword) {
+        throw new BadRequestException('Invalid credentials');
+      }
+      delete user.password;
+      return microserviceResponses.success(user);
+    } catch (error) {
+      return microserviceResponses.error(error);
+    }
+  }
 
   async register(registerDto: RegisterDto) {
     try {
